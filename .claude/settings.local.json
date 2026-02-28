@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(printf %s\\\\n:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

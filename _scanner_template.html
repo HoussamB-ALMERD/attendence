@@ -1,0 +1,344 @@
+<\!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QR Attendance Scanner</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;
+  --dark:#0f172a;--card:#1e293b;--border:#334155;--text:#f1f5f9;--muted:#94a3b8;--radius:12px
+}
+html,body{height:100%;background:var(--dark);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;
+  max-width:480px;margin:0 auto;padding:0 12px 8px;gap:8px}
+#topbar{display:flex;justify-content:space-between;align-items:center;padding:10px 0 4px;flex-shrink:0}
+#session-name{font-size:13px;color:var(--muted);max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#count-badge{background:var(--blue);color:#fff;font-size:13px;font-weight:700;
+  padding:4px 12px;border-radius:20px;min-width:60px;text-align:center}
+#camera-wrap{position:relative;flex:1 1 auto;min-height:0;border-radius:var(--radius);overflow:hidden;background:#000}
+#video{width:100%;height:100%;object-fit:cover;display:block}
+#viewfinder{position:absolute;inset:0;pointer-events:none}
+#viewfinder svg{width:100%;height:100%}
+#flash{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity 0.15s;border-radius:var(--radius)}
+#camera-msg{display:none;position:absolute;inset:0;background:rgba(0,0,0,.7);
+  align-items:center;justify-content:center;font-size:16px;color:var(--muted);
+  border-radius:var(--radius);text-align:center;padding:20px}
+#status-card{background:var(--card);border:2px solid var(--border);border-radius:var(--radius);
+  padding:12px 16px;min-height:72px;display:flex;flex-direction:column;
+  justify-content:center;flex-shrink:0;transition:border-color .2s}
+#status-card.ok{border-color:var(--green)}
+#status-card.error{border-color:var(--red)}
+#status-card.warn{border-color:var(--yellow)}
+#status-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}
+#status-name{font-size:22px;font-weight:700;color:var(--text);line-height:1.2}
+#status-sub{font-size:13px;color:var(--muted);margin-top:2px}
+#btn-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;flex-shrink:0}
+button{padding:14px 0;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#btn-new{background:var(--blue);color:#fff}
+#btn-export{background:var(--green);color:#fff}
+#btn-reset{background:var(--card);color:var(--muted);border:1px solid var(--border)}
+button:active{opacity:.75}
+#list-wrap{flex:0 0 auto;max-height:120px;overflow-y:auto;border-radius:var(--radius);
+  background:var(--card);border:1px solid var(--border);-webkit-overflow-scrolling:touch}
+#attended-list{list-style:none}
+#attended-list li{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 12px;font-size:13px;border-bottom:1px solid var(--border)}
+#attended-list li:last-child{border-bottom:none}
+.li-name{color:var(--text)}
+.li-time{color:var(--muted);font-size:11px}
+#modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;
+  align-items:center;justify-content:center;padding:24px}
+#modal-bg.visible{display:flex}
+#modal{background:var(--card);border-radius:16px;padding:24px;width:100%;max-width:380px;border:1px solid var(--border)}
+#modal h2{font-size:18px;margin-bottom:16px}
+#modal label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;margin-top:14px}
+#modal input{width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);
+  background:var(--dark);color:var(--text);font-size:15px}
+#modal-start{width:100%;margin-top:20px;background:var(--blue);color:#fff;
+  padding:14px;border-radius:10px;font-size:16px;font-weight:700}
+#modal-cancel{width:100%;margin-top:10px;background:transparent;
+  color:var(--muted);padding:10px;border-radius:10px;font-size:14px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <span id="session-name">No session — tap New Session</span>
+    <span id="count-badge">0 / 0</span>
+  </div>
+  <div id="camera-wrap">
+    <video id="video" autoplay muted playsinline></video>
+    <div id="viewfinder">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="0.8" stroke-linecap="round">
+          <polyline points="18,28 18,18 28,18"/>
+          <polyline points="72,18 82,18 82,28"/>
+          <polyline points="18,72 18,82 28,82"/>
+          <polyline points="82,72 82,82 72,82"/>
+        </g>
+      </svg>
+    </div>
+    <div id="flash"></div>
+    <div id="camera-msg"></div>
+  </div>
+  <div id="status-card">
+    <div id="status-title">Status</div>
+    <div id="status-name">Waiting for camera…</div>
+    <div id="status-sub"></div>
+  </div>
+  <div id="list-wrap">
+    <ul id="attended-list">
+      <li id="list-empty" style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No scans yet</li>
+    </ul>
+  </div>
+  <div id="btn-row">
+    <button id="btn-new"    onclick="openNewSession()">New Session</button>
+    <button id="btn-export" onclick="exportCSV()">Export CSV</button>
+    <button id="btn-reset"  onclick="resetSession()">Reset</button>
+  </div>
+</div>
+<div id="modal-bg">
+  <div id="modal">
+    <h2>New Session</h2>
+    <label>Session name</label>
+    <input id="modal-session-input" type="text" placeholder="Session_2024_09_01_0900">
+    <button id="modal-start" onclick="confirmNewSession()">Start Session</button>
+    <button id="modal-cancel" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+<script>
+/* JSQR_EMBED */
+</script>
+<script>
+const SECRET_KEY = "CHANGE_THIS_SECRET_KEY_2024";
+const STUDENTS = {
+  "STU001": { name: "Ahmed Ali",      group: "TP1" },
+  "STU002": { name: "Sara Ben",       group: "TP1" },
+  "STU003": { name: "Mohamed Omar",   group: "TP1" },
+  "STU004": { name: "Fatima Hassan",  group: "TP2" },
+  "STU005": { name: "Ali Ahmed",      group: "TP2" },
+  "STU006": { name: "Nour Khalid",    group: "TP2" },
+};
+function sha1(msg) {
+  function rotl(n,s){return(n<<s)|(n>>>(32-s))}
+  function toHex(n){return('0000000'+n.toString(16)).slice(-8)}
+  const bytes=[];
+  for(let i=0;i<msg.length;i++){
+    const c=msg.charCodeAt(i);
+    if(c<128)bytes.push(c);
+    else if(c<2048)bytes.push((c>>6)|192,(c&63)|128);
+    else bytes.push((c>>12)|224,((c>>6)&63)|128,(c&63)|128);
+  }
+  const len8=bytes.length;
+  bytes.push(0x80);
+  while((bytes.length%64)!==56)bytes.push(0);
+  const lb=len8*8;
+  bytes.push(0,0,0,0,(lb/0x1000000)&0xff,(lb/0x10000)&0xff,(lb/0x100)&0xff,lb&0xff);
+  let h0=0x67452301,h1=0xEFCDAB89,h2=0x98BADCFE,h3=0x10325476,h4=0xC3D2E1F0;
+  for(let i=0;i<bytes.length;i+=64){
+    const w=[];
+    for(let j=0;j<16;j++)w[j]=(bytes[i+j*4]<<24)|(bytes[i+j*4+1]<<16)|(bytes[i+j*4+2]<<8)|bytes[i+j*4+3];
+    for(let j=16;j<80;j++)w[j]=rotl(w[j-3]^w[j-8]^w[j-14]^w[j-16],1);
+    let a=h0,b=h1,c=h2,d=h3,e=h4;
+    for(let j=0;j<80;j++){
+      let f,k;
+      if(j<20){f=(b&c)|(~b&d);k=0x5A827999}
+      else if(j<40){f=b^c^d;k=0x6ED9EBA1}
+      else if(j<60){f=(b&c)|(b&d)|(c&d);k=0x8F1BBCDC}
+      else{f=b^c^d;k=0xCA62C1D6}
+      const tmp=(rotl(a,5)+f+e+k+w[j])|0;
+      e=d;d=c;c=rotl(b,30);b=a;a=tmp;
+    }
+    h0=(h0+a)|0;h1=(h1+b)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0;
+  }
+  return toHex(h0)+toHex(h1)+toHex(h2)+toHex(h3)+toHex(h4);
+}
+const LS_KEY = "qr_attendance_v1";
+let session = null;
+let lastScanTime = 0;
+const COOLDOWN = 1500;
+let audioCtx = null;
+function playBeep(freq=880, dur=0.18) {
+  try {
+    if(!audioCtx) audioCtx = new(window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const osc=audioCtx.createOscillator();
+    const g=audioCtx.createGain();
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.type='square'; osc.frequency.value=freq;
+    g.gain.setValueAtTime(0.25,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    osc.start(); osc.stop(audioCtx.currentTime+dur);
+  } catch(e){}
+}
+document.addEventListener('touchstart',()=>{
+  if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume();
+},{once:true,passive:true});
+function saveSession(){if(session)localStorage.setItem(LS_KEY,JSON.stringify(session));}
+function loadSession(){
+  try{const r=localStorage.getItem(LS_KEY);if(r)session=JSON.parse(r);}catch(e){session=null;}
+}
+function defaultName(){
+  const d=new Date(),p=n=>String(n).padStart(2,'0');
+  return `Session_${d.getFullYear()}_${p(d.getMonth()+1)}_${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+function openNewSession(){
+  document.getElementById('modal-session-input').value=defaultName();
+  document.getElementById('modal-bg').classList.add('visible');
+}
+function closeModal(){document.getElementById('modal-bg').classList.remove('visible');}
+function confirmNewSession(){
+  const name=document.getElementById('modal-session-input').value.trim()||defaultName();
+  session={name,records:[]};
+  saveSession();closeModal();updateUI();
+  setStatus('ok','SESSION STARTED',name,'Scan QR codes now');
+}
+function resetSession(){
+  if(session&&session.records.length>0){
+    if(\!confirm(`Reset "${session.name}"?
+${session.records.length} records will be lost.`))return;
+  }
+  session=null; localStorage.removeItem(LS_KEY); updateUI();
+  setStatus('idle','Reset','No active session','');
+}
+function csvEsc(v){return/[",
+]/.test(v)?`"${v.replace(/"/g,'""')}"`:`${v}`;}
+function exportCSV(){
+  if(\!session||\!session.records.length){alert('No records to export.');return;}
+  const lines=['StudentID,Name,TP_Group,Timestamp'];
+  for(const r of session.records)
+    lines.push(`${csvEsc(r.id)},${csvEsc(r.name)},${csvEsc(r.group)},${csvEsc(r.ts)}`);
+  const blob=new Blob([lines.join('
+')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`Attendance_${session.name}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function updateUI(){
+  const recs=session?session.records:[];
+  const total=Object.keys(STUDENTS).length;
+  document.getElementById('session-name').textContent=session?session.name:'No active session';
+  document.getElementById('count-badge').textContent=`${recs.length} / ${total}`;
+  const list=document.getElementById('attended-list');
+  if(\!recs.length){
+    list.innerHTML='<li id="list-empty" style="padding:16px;text-align:center;color:var(--muted);font-size:13px">No scans yet</li>';
+    return;
+  }
+  list.innerHTML='';
+  for(const r of [...recs].reverse()){
+    const li=document.createElement('li');
+    li.innerHTML=`<span class="li-name">${esc(r.name)} <small style="color:var(--muted);font-size:11px">${esc(r.group)}</small></span>`
+      +`<span class="li-time">${r.ts.substring(11,16)}</span>`;
+    list.appendChild(li);
+  }
+}
+let statusTimer=null;
+function setStatus(type,title,name,sub){
+  const c=document.getElementById('status-card');
+  c.className=type||'';
+  document.getElementById('status-title').textContent=title;
+  document.getElementById('status-name').textContent=name;
+  document.getElementById('status-sub').textContent=sub;
+}
+function flashStatus(type,title,name,sub){
+  setStatus(type,title,name,sub);
+  clearTimeout(statusTimer);
+  statusTimer=setTimeout(()=>setStatus('','Scan ready','Point camera at student QR',''),3000);
+}
+function flashOverlay(color){
+  const el=document.getElementById('flash');
+  el.style.background=color; el.style.opacity='0.4';
+  setTimeout(()=>{el.style.opacity='0';},250);
+}
+function processQR(raw){
+  const now=Date.now();
+  if(now-lastScanTime<COOLDOWN)return;
+  lastScanTime=now;
+  const parts=raw.split('|');
+  if(parts.length\!==2){
+    flashOverlay('#ef4444');
+    flashStatus('error','INVALID QR','Bad QR format',raw.substring(0,40));
+    playBeep(200,0.2);
+    return;
+  }
+  const [sid,sig]=parts;
+  if(sig\!==sha1(sid+SECRET_KEY)){
+    flashOverlay('#ef4444');
+    flashStatus('error','INVALID QR','Signature mismatch — possible forgery',sid);
+    playBeep(200,0.2);
+    return;
+  }
+  const student=STUDENTS[sid];
+  if(\!student){
+    flashOverlay('#ef4444');
+    flashStatus('error','UNKNOWN STUDENT',sid,'Not found in class list');
+    playBeep(200,0.2);
+    return;
+  }
+  if(\!session){
+    flashOverlay('#f59e0b');
+    flashStatus('warn','NO SESSION',student.name,'Start a session first');
+    playBeep(440,0.15);
+    return;
+  }
+  if(session.records.some(r=>r.id===sid)){
+    flashOverlay('#f59e0b');
+    flashStatus('warn','ALREADY SCANNED',student.name,student.group);
+    playBeep(440,0.15);
+    return;
+  }
+  const ts=new Date().toISOString().replace('T',' ').substring(0,19);
+  session.records.push({id:sid,name:student.name,group:student.group,ts});
+  saveSession(); updateUI(); playBeep(880,0.18);
+  flashOverlay('#22c55e');
+  flashStatus('ok','SCANNED ✓',student.name,`${student.group}  ·  ${ts.substring(11,16)}`);
+}
+let video=null, canvas=null, ctx=null;
+async function startCamera(){
+  video=document.getElementById('video');
+  canvas=document.createElement('canvas');
+  ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const msg=document.getElementById('camera-msg');
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
+    });
+    video.srcObject=stream;
+    await video.play();
+    video.addEventListener('loadedmetadata',()=>{
+      canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+      setStatus('','Scan ready','Point camera at student QR','');
+      requestAnimationFrame(scanLoop);
+    },{once:true});
+  }catch(err){
+    msg.style.display='flex';
+    msg.textContent=err.name==='NotAllowedError'
+      ?'Camera access denied.
+Please allow camera in Settings → Safari.'
+      :`Camera error: ${err.message}`;
+    setStatus('error','CAMERA ERROR',err.name,'See camera area for details');
+  }
+}
+function scanLoop(){
+  if(video&&video.readyState===video.HAVE_ENOUGH_DATA){
+    canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+    ctx.drawImage(video,0,0);
+    try{
+      const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const r=jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
+      if(r) processQR(r.data);
+    }catch(e){}
+  }
+  requestAnimationFrame(scanLoop);
+}
+loadSession(); updateUI(); startCamera();
+</script>
+</body>
+</html>
