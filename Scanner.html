@@ -29,9 +29,16 @@ html,body{height:100%;background:var(--dark);color:var(--text);
 #viewfinder{position:absolute;inset:0;pointer-events:none}
 #viewfinder svg{width:100%;height:100%}
 #flash{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity 0.15s;border-radius:var(--radius)}
-#camera-msg{display:none;position:absolute;inset:0;background:rgba(0,0,0,.7);
-  align-items:center;justify-content:center;font-size:16px;color:var(--muted);
-  border-radius:var(--radius);text-align:center;padding:20px;white-space:pre-line}
+#camera-msg{display:none;position:absolute;inset:0;background:rgba(0,0,0,.88);
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;
+  border-radius:var(--radius);text-align:center;padding:24px;z-index:10}
+#cam-err-text{font-size:14px;color:#cbd5e1;white-space:pre-line;line-height:1.6}
+#cam-err-btns{display:flex;flex-direction:column;gap:8px;width:100%;max-width:260px}
+#cam-err-btns button,#cam-err-btns label{display:block;width:100%;padding:12px;
+  border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;
+  text-align:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#btn-retry{background:#3b82f6;color:#fff}
+#btn-photo-label{background:#334155;color:#f1f5f9}
 #camera-tap{
   /* reset <button> defaults */
   border:none;outline:none;padding:0;margin:0;background:rgba(15,23,42,0.85);
@@ -106,7 +113,15 @@ button:active{opacity:.75}
       </svg>
     </div>
     <div id="flash"></div>
-    <div id="camera-msg"></div>
+    <div id="camera-msg">
+      <div id="cam-err-text"></div>
+      <div id="cam-err-btns">
+        <button type="button" id="btn-retry" onclick="retryCamera()" style="display:none">Retry Camera</button>
+        <label id="btn-photo-label" style="display:none">Take Photo Instead
+          <input type="file" id="photo-input" accept="image/*" capture="environment" onchange="captureFromFile(event)" style="display:none">
+        </label>
+      </div>
+    </div>
     <button type="button" id="camera-tap">
       <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
@@ -888,75 +903,129 @@ function processQR(raw){
 }
 var video=null, canvas=null, ctx=null;
 
-function activateCamera(){
+// Show error in the camera-msg overlay (hides the tap button)
+function showCamError(text, showRetry, showPhoto){
   var tap=document.getElementById('camera-tap');
   var msg=document.getElementById('camera-msg');
+  tap.style.display='none';
+  document.getElementById('cam-err-text').textContent=text;
+  document.getElementById('btn-retry').style.display=showRetry?'block':'none';
+  document.getElementById('btn-photo-label').style.display=showPhoto?'block':'none';
+  msg.style.display='flex';
+}
 
-  // Give immediate feedback so user knows the tap registered
+// Hide error overlay and restore the tap button
+function retryCamera(){
+  var tap=document.getElementById('camera-tap');
+  var msg=document.getElementById('camera-msg');
+  msg.style.display='none';
+  tap.style.display='';
+  tap.disabled=false;
+  tap.style.opacity='1';
+  setStatus('','Waiting for camera\u2026','Tap the camera icon to start','');
+}
+
+// Process a photo taken via <input type=file> with jsQR
+function captureFromFile(e){
+  var file=e.target.files[0]; if(!file)return;
+  e.target.value=''; // reset so same file can trigger again
+  var url=URL.createObjectURL(file);
+  var img=new Image();
+  img.onload=function(){
+    if(!canvas){canvas=document.createElement('canvas');ctx=canvas.getContext('2d',{willReadFrequently:true});}
+    canvas.width=img.naturalWidth; canvas.height=img.naturalHeight;
+    ctx.drawImage(img,0,0);
+    var data=ctx.getImageData(0,0,canvas.width,canvas.height);
+    var code=jsQR(data.data,data.width,data.height,{inversionAttempts:'dontInvert'});
+    URL.revokeObjectURL(url);
+    if(code){processQR(code.data);}
+    else{setStatus('warn','NO QR FOUND','No QR code detected','Try again with better lighting');}
+  };
+  img.onerror=function(){URL.revokeObjectURL(url);setStatus('error','IMAGE ERROR','Could not read image','');};
+  img.src=url;
+}
+
+function activateCamera(){
+  var tap=document.getElementById('camera-tap');
   tap.disabled=true;
   tap.style.opacity='0.4';
-  setStatus('','Requesting camera\u2026','Allow access when iOS prompts','');
 
-  // Guard: camera API missing (should not happen on modern iOS HTTPS)
+  // 1. HTTPS required for getUserMedia on real devices
+  if(location.protocol!=='https:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){
+    showCamError('Camera requires a secure connection (HTTPS).\n\nMake sure the URL starts with https://', false, false);
+    setStatus('error','HTTPS REQUIRED','Camera needs https://','');
+    return;
+  }
+
+  // 2. Detect iOS in-app browser (Instagram, WhatsApp, etc.) — no Safari token in UA
+  var ua=navigator.userAgent;
+  if(/iPhone|iPad|iPod/.test(ua)&&!/Safari\//.test(ua)){
+    showCamError('Open this page in Safari.\n\nCamera access is not available in this browser.\n\nCopy the URL \u2192 open Safari \u2192 paste and go.', false, false);
+    setStatus('error','WRONG BROWSER','Requires Safari on iOS','');
+    return;
+  }
+
+  // 3. getUserMedia API missing
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-    tap.style.display='none';
-    msg.style.display='flex';
-    msg.textContent='Camera not available.\nOpen this page in Safari (not Chrome) on iOS 14.3+.';
+    showCamError('Camera API not available.\n\nOpen this page in Safari on iOS 14.3 or later.', false, false);
     setStatus('error','NOT SUPPORTED','getUserMedia missing','');
     return;
   }
 
-  // Initialise video/canvas refs before the async call
+  setStatus('','Requesting camera\u2026','Allow access when prompted','');
   video=document.getElementById('video');
   if(!canvas){canvas=document.createElement('canvas');ctx=canvas.getContext('2d',{willReadFrequently:true});}
 
-  // Safety timeout — iOS sometimes hangs the promise when permission is in an unknown state
-  var gumTimer=setTimeout(function(){
-    tap.disabled=false; tap.style.opacity='1';
-    msg.style.display='flex';
-    msg.textContent='Camera did not respond.\n\nFix: Settings \u2192 Privacy & Security \u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap the button again.';
-    setStatus('error','TIMED OUT','No camera response','Settings \u2192 Privacy \u2192 Camera \u2192 Allow');
-  },8000);
+  function doGUM(){
+    var gumTimer=setTimeout(function(){
+      showCamError('Camera did not respond.\n\nIf iOS never showed a permission prompt:\nSettings \u2192 Privacy & Security \u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap Retry.', true, true);
+      setStatus('error','TIMED OUT','No camera response','');
+    },8000);
 
-  // getUserMedia with .then/.catch — no async/await, preserves iOS gesture context
-  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
-  .then(function(stream){
-    clearTimeout(gumTimer);
-    tap.style.display='none';
-    msg.style.display='none';
-    video.srcObject=stream;
-    video.onloadedmetadata=function(){
-      canvas.width=video.videoWidth;
-      canvas.height=video.videoHeight;
-      video.play().catch(function(){});
-      setStatus('','Scan ready','Point camera at student QR','');
-      requestAnimationFrame(scanLoop);
-    };
-    // Some iOS versions fire canplay instead of loadedmetadata
-    video.oncanplay=function(){
-      if(!canvas.width){
-        canvas.width=video.videoWidth||640;
-        canvas.height=video.videoHeight||480;
+    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
+    .then(function(stream){
+      clearTimeout(gumTimer);
+      tap.style.display='none';
+      document.getElementById('camera-msg').style.display='none';
+      video.srcObject=stream;
+      video.onloadedmetadata=function(){
+        canvas.width=video.videoWidth; canvas.height=video.videoHeight;
         video.play().catch(function(){});
         setStatus('','Scan ready','Point camera at student QR','');
         requestAnimationFrame(scanLoop);
+      };
+      video.oncanplay=function(){
+        if(!canvas.width){
+          canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||480;
+          video.play().catch(function(){});
+          setStatus('','Scan ready','Point camera at student QR','');
+          requestAnimationFrame(scanLoop);
+        }
+      };
+      video.play().catch(function(){});
+    })
+    .catch(function(err){
+      clearTimeout(gumTimer);
+      if(err.name==='NotAllowedError'||err.name==='PermissionDeniedError'){
+        showCamError('Camera access denied.\n\nTo fix on iPhone:\nSettings \u2192 Privacy & Security\n\u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap Retry.', true, true);
+      }else if(err.name==='NotFoundError'){
+        showCamError('No camera found on this device.', true, false);
+      }else{
+        showCamError('Camera error: '+err.name+'\n'+(err.message||''), true, true);
       }
-    };
-    video.play().catch(function(){});
-  })
-  .catch(function(err){
-    clearTimeout(gumTimer);
-    tap.disabled=false; tap.style.opacity='1';
-    msg.style.display='flex';
-    if(err.name==='NotAllowedError'){
-      msg.textContent='Camera access denied.\n\nFix: Settings \u2192 Privacy & Security \u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap again.';
-    }else if(err.name==='NotFoundError'){
-      msg.textContent='No camera found on this device.';
-    }else{
-      msg.textContent='Camera error: '+err.name+'\n'+(err.message||'');
-    }
-    setStatus('error','CAMERA ERROR',err.name,'Tap button to retry');
-  });
+      setStatus('error','CAMERA ERROR',err.name,'');
+    });
+  }
+
+  // 4. Permissions API (iOS 16+): detect denied state before calling getUserMedia
+  if(navigator.permissions&&navigator.permissions.query){
+    navigator.permissions.query({name:'camera'}).then(function(ps){
+      if(ps.state==='denied'){
+        showCamError('Camera access is blocked.\n\nTo fix on iPhone:\nSettings \u2192 Privacy & Security\n\u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap Retry.', true, true);
+        setStatus('error','CAMERA BLOCKED','Permission denied in Settings','');
+      }else{ doGUM(); }
+    }).catch(function(){ doGUM(); });
+  }else{ doGUM(); }
 }
 
 function scanLoop(){
