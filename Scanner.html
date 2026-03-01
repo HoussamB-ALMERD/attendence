@@ -784,6 +784,7 @@ const LS_KEY = "qr_attendance_v1";
 let session = null;
 let lastScanTime = 0;
 const COOLDOWN = 1500;
+var pendingScan = null; // holds a validated scan that arrived before a session existed
 let audioCtx = null;
 function playBeep(freq=880, dur=0.18) {
   try {
@@ -817,6 +818,16 @@ function closeModal(){document.getElementById('modal-bg').classList.remove('visi
 function confirmNewSession(){
   const name=document.getElementById('modal-session-input').value.trim()||defaultName();
   session={name,records:[]};
+  // If a scan arrived before the session existed, record it now
+  if(pendingScan){
+    const {sid,student}=pendingScan; pendingScan=null;
+    const ts=new Date().toISOString().replace('T',' ').substring(0,19);
+    session.records.push({id:sid,name:student.name,group:student.group,ts});
+    saveSession();closeModal();updateUI();playBeep(880,0.18);
+    flashOverlay('#22c55e');
+    flashStatus('ok','SCANNED \u2713',student.name,`${student.group}  \u00B7  ${ts.substring(11,16)}`);
+    return;
+  }
   saveSession();closeModal();updateUI();
   setStatus('ok','SESSION STARTED',name,'Scan QR codes now');
 }
@@ -832,7 +843,10 @@ function csvEsc(v){return/[",
 
 ]/.test(v)?`"${v.replace(/"/g,'""')}"`:`${v}`;}
 function exportCSV(){
-  if(\!session||\!session.records.length){alert('No records to export.');return;}
+  if(!session||!session.records.length){
+    setStatus('warn','NOTHING TO EXPORT','No scans recorded yet','Start a session and scan some QRs first');
+    return;
+  }
   const lines=['StudentID,Name,TP_Group,Timestamp'];
   for(const r of session.records)
     lines.push(`${csvEsc(r.id)},${csvEsc(r.name)},${csvEsc(r.group)},${csvEsc(r.ts)}`);
@@ -875,7 +889,7 @@ function setStatus(type,title,name,sub){
 function flashStatus(type,title,name,sub){
   setStatus(type,title,name,sub);
   clearTimeout(statusTimer);
-  statusTimer=setTimeout(()=>setStatus('','Scan ready','Point camera at student QR',''),3000);
+  statusTimer=setTimeout(()=>setStatus('','Ready','Tap camera button for next student',''),3000);
 }
 function flashOverlay(color){
   const el=document.getElementById('flash');
@@ -907,10 +921,12 @@ function processQR(raw){
     playBeep(200,0.2);
     return;
   }
-  if(\!session){
+  if(!session){
+    pendingScan={sid,student};
     flashOverlay('#f59e0b');
-    flashStatus('warn','NO SESSION',student.name,'Start a session first');
+    setStatus('warn','NO SESSION',student.name,'Opening session dialog\u2026');
     playBeep(440,0.15);
+    openNewSession();
     return;
   }
   if(session.records.some(r=>r.id===sid)){
@@ -938,7 +954,7 @@ function captureFromFile(e){
     canvas.width=img.naturalWidth; canvas.height=img.naturalHeight;
     ctx.drawImage(img,0,0);
     var data=ctx.getImageData(0,0,canvas.width,canvas.height);
-    var code=jsQR(data.data,data.width,data.height,{inversionAttempts:'dontInvert'});
+    var code=jsQR(data.data,data.width,data.height,{inversionAttempts:'attemptBoth'});
     URL.revokeObjectURL(url);
     if(code){processQR(code.data);}
     else{setStatus('warn','NO QR FOUND','No QR code detected in photo','Try closer · better lighting · tap again');}
