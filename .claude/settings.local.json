@@ -5,7 +5,9 @@
       "Bash(powershell.exe:*)",
       "Bash(printf %s\\\\n:*)",
       "Bash(cmd.exe:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(cd:*)",
+      "Bash(cd /e/Qr_Attendence && git commit -m \"Fix iOS PWA camera: addEventListener, remove autoplay, null-check, timeout, sw v3\" && git push origin main 2>&1)"
     ]
   }
 }
