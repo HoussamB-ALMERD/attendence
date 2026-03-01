@@ -24,38 +24,50 @@ html,body{height:100%;background:var(--dark);color:var(--text);
 #session-name{font-size:13px;color:var(--muted);max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #count-badge{background:var(--blue);color:#fff;font-size:13px;font-weight:700;
   padding:4px 12px;border-radius:20px;min-width:60px;text-align:center}
-#camera-wrap{position:relative;flex:1 1 auto;min-height:0;border-radius:var(--radius);overflow:hidden;background:#000}
+/* ── SCAN AREA ─────────────────────────────────────── */
+#scan-area{position:relative;flex:1 1 auto;min-height:0;border-radius:var(--radius);
+  overflow:hidden;background:var(--card);display:flex;align-items:center;justify-content:center}
+#flash{position:absolute;inset:0;opacity:0;pointer-events:none;
+  transition:opacity 0.15s;border-radius:var(--radius);z-index:20}
+/* Photo-capture button — primary mode, always works on iPhone */
+#photo-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;padding:24px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;text-align:center;width:100%;height:100%;
+  background:none;border:none;outline:none;user-select:none}
+#photo-btn:active{opacity:0.6}
+#photo-btn .picon{color:var(--blue);opacity:0.9}
+#photo-btn .ptitle{font-size:20px;font-weight:700;color:var(--text)}
+#photo-btn .psub{font-size:12px;color:var(--muted);max-width:230px;line-height:1.5}
+/* Live camera — secondary mode, desktop/Android */
+#live-wrap{display:none;position:absolute;inset:0}
 #video{width:100%;height:100%;object-fit:cover;display:block}
 #viewfinder{position:absolute;inset:0;pointer-events:none}
 #viewfinder svg{width:100%;height:100%}
-#flash{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity 0.15s;border-radius:var(--radius)}
-#camera-msg{display:none;position:absolute;inset:0;background:rgba(0,0,0,.88);
-  align-items:center;justify-content:center;flex-direction:column;gap:14px;
-  border-radius:var(--radius);text-align:center;padding:24px;z-index:10}
-#cam-err-text{font-size:14px;color:#cbd5e1;white-space:pre-line;line-height:1.6}
-#cam-err-btns{display:flex;flex-direction:column;gap:8px;width:100%;max-width:260px}
-#cam-err-btns button,#cam-err-btns label{display:block;width:100%;padding:12px;
-  border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;
-  text-align:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-#btn-retry{background:#3b82f6;color:#fff}
-#btn-photo-label{background:#334155;color:#f1f5f9}
-#camera-tap{
-  /* reset <button> defaults */
-  border:none;outline:none;padding:0;margin:0;background:rgba(15,23,42,0.85);
-  /* layout */
-  position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:12px;
-  border-radius:var(--radius);cursor:pointer;z-index:5;
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
-  width:100%;
-}
-#camera-tap svg{opacity:0.7}
-#camera-tap span{font-size:16px;color:var(--text);font-weight:600}
-#camera-tap small{font-size:12px;color:var(--muted)}
-video::-webkit-media-controls{display:none!important}
-video::-webkit-media-controls-panel{display:none!important}
-video::-webkit-media-controls-play-button{display:none!important}
+#live-start{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;
+  background:rgba(15,23,42,0.88);border:none;width:100%;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;cursor:pointer}
+#live-start span{font-size:16px;color:var(--text);font-weight:600}
+#live-start small{font-size:11px;color:var(--muted)}
+#live-err{display:none;position:absolute;inset:0;z-index:10;
+  background:rgba(0,0,0,.92);align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;padding:24px;text-align:center}
+#live-err p{font-size:13px;color:#cbd5e1;white-space:pre-line;line-height:1.6}
+#live-err button{background:#334155;color:var(--text);border:none;border-radius:8px;
+  padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+video::-webkit-media-controls,
+video::-webkit-media-controls-panel,
+video::-webkit-media-controls-play-button,
 video::-webkit-media-controls-start-playback-button{display:none!important}
+/* Mode toggle pill at bottom of scan area */
+#mode-bar{position:absolute;bottom:10px;left:0;right:0;display:flex;
+  justify-content:center;z-index:5;pointer-events:none}
+#mode-toggle{pointer-events:all;background:rgba(15,23,42,0.8);
+  border:1px solid var(--border);color:var(--muted);border-radius:20px;
+  font-size:11px;font-weight:600;padding:5px 14px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#mode-toggle:active{opacity:0.7}
 #status-card{background:var(--card);border:2px solid var(--border);border-radius:var(--radius);
   padding:12px 16px;min-height:72px;display:flex;flex-direction:column;
   justify-content:center;flex-shrink:0;transition:border-color .2s}
@@ -100,40 +112,52 @@ button:active{opacity:.75}
     <span id="session-name">No session — tap New Session</span>
     <span id="count-badge">0 / 0</span>
   </div>
-  <div id="camera-wrap">
-    <video id="video" muted playsinline></video>
-    <div id="viewfinder">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-        <g fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="0.8" stroke-linecap="round">
-          <polyline points="18,28 18,18 28,18"/>
-          <polyline points="72,18 82,18 82,28"/>
-          <polyline points="18,72 18,82 28,82"/>
-          <polyline points="82,72 82,82 72,82"/>
-        </g>
-      </svg>
-    </div>
-    <div id="flash"></div>
-    <div id="camera-msg">
-      <div id="cam-err-text"></div>
-      <div id="cam-err-btns">
-        <button type="button" id="btn-retry" onclick="retryCamera()" style="display:none">Retry Camera</button>
-        <label id="btn-photo-label" style="display:none">Take Photo Instead
-          <input type="file" id="photo-input" accept="image/*" capture="environment" onchange="captureFromFile(event)" style="display:none">
-        </label>
-      </div>
-    </div>
-    <button type="button" id="camera-tap">
-      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <div id="scan-area">
+    <!-- PRIMARY: photo capture — no getUserMedia, no permission popup, works on all iPhones -->
+    <button type="button" id="photo-btn" onclick="document.getElementById('photo-input').click()">
+      <svg class="picon" width="68" height="68" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
         <circle cx="12" cy="13" r="4"/>
       </svg>
-      <span>Tap to Start Camera</span>
-      <small>Allow camera access when prompted</small>
+      <div class="ptitle">Tap to Scan Student QR</div>
+      <div class="psub">Opens camera instantly &middot; No permission needed &middot; Works on all iPhones</div>
     </button>
+    <input type="file" id="photo-input" accept="image/*" capture="environment" onchange="captureFromFile(event)" style="display:none">
+    <!-- SECONDARY: live camera — for desktop / Android -->
+    <div id="live-wrap">
+      <video id="video" muted playsinline></video>
+      <div id="viewfinder">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+          <g fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="0.8" stroke-linecap="round">
+            <polyline points="18,28 18,18 28,18"/>
+            <polyline points="72,18 82,18 82,28"/>
+            <polyline points="18,72 18,82 28,82"/>
+            <polyline points="82,72 82,82 72,82"/>
+          </g>
+        </svg>
+      </div>
+      <button type="button" id="live-start" onclick="startLive()">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        <span>Tap to Start Live Camera</span>
+        <small>Requires camera permission in browser</small>
+      </button>
+      <div id="live-err">
+        <p id="live-err-text"></p>
+        <button onclick="stopLive()">&#8592; Back to Photo Mode</button>
+      </div>
+    </div>
+    <div id="flash"></div>
+    <!-- Mode switch pill -->
+    <div id="mode-bar">
+      <button type="button" id="mode-toggle" onclick="toggleMode()">&#127909; Try Live Camera</button>
+    </div>
   </div>
   <div id="status-card">
     <div id="status-title">Status</div>
-    <div id="status-name">Waiting for camera…</div>
+    <div id="status-name">Tap the camera button above</div>
     <div id="status-sub"></div>
   </div>
   <div id="list-wrap">
@@ -901,34 +925,12 @@ function processQR(raw){
   flashOverlay('#22c55e');
   flashStatus('ok','SCANNED ✓',student.name,`${student.group}  ·  ${ts.substring(11,16)}`);
 }
-var video=null, canvas=null, ctx=null;
+var canvas=null, ctx=null, video=null, liveActive=false, liveStream=null;
 
-// Show error in the camera-msg overlay (hides the tap button)
-function showCamError(text, showRetry, showPhoto){
-  var tap=document.getElementById('camera-tap');
-  var msg=document.getElementById('camera-msg');
-  tap.style.display='none';
-  document.getElementById('cam-err-text').textContent=text;
-  document.getElementById('btn-retry').style.display=showRetry?'block':'none';
-  document.getElementById('btn-photo-label').style.display=showPhoto?'block':'none';
-  msg.style.display='flex';
-}
-
-// Hide error overlay and restore the tap button
-function retryCamera(){
-  var tap=document.getElementById('camera-tap');
-  var msg=document.getElementById('camera-msg');
-  msg.style.display='none';
-  tap.style.display='';
-  tap.disabled=false;
-  tap.style.opacity='1';
-  setStatus('','Waiting for camera\u2026','Tap the camera icon to start','');
-}
-
-// Process a photo taken via <input type=file> with jsQR
+// ── Photo-capture mode (PRIMARY — works on every iPhone, no permission needed) ──
 function captureFromFile(e){
   var file=e.target.files[0]; if(!file)return;
-  e.target.value=''; // reset so same file can trigger again
+  e.target.value=''; // reset so the same button can be tapped again next scan
   var url=URL.createObjectURL(file);
   var img=new Image();
   img.onload=function(){
@@ -939,103 +941,90 @@ function captureFromFile(e){
     var code=jsQR(data.data,data.width,data.height,{inversionAttempts:'dontInvert'});
     URL.revokeObjectURL(url);
     if(code){processQR(code.data);}
-    else{setStatus('warn','NO QR FOUND','No QR code detected','Try again with better lighting');}
+    else{setStatus('warn','NO QR FOUND','No QR code detected in photo','Try closer · better lighting · tap again');}
   };
-  img.onerror=function(){URL.revokeObjectURL(url);setStatus('error','IMAGE ERROR','Could not read image','');};
+  img.onerror=function(){URL.revokeObjectURL(url);setStatus('error','IMAGE ERROR','Could not read photo','');};
   img.src=url;
 }
 
-function activateCamera(){
-  var tap=document.getElementById('camera-tap');
-  tap.disabled=true;
-  tap.style.opacity='0.4';
-
-  // 1. HTTPS required for getUserMedia on real devices
-  if(location.protocol!=='https:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){
-    showCamError('Camera requires a secure connection (HTTPS).\n\nMake sure the URL starts with https://', false, false);
-    setStatus('error','HTTPS REQUIRED','Camera needs https://','');
-    return;
+// ── Live-camera mode (SECONDARY — desktop / Android, opt-in) ──────────────────
+function toggleMode(){
+  var lw=document.getElementById('live-wrap');
+  var inLive=(lw.style.display==='block');
+  if(inLive){stopLive();}
+  else{
+    document.getElementById('photo-btn').style.display='none';
+    lw.style.display='block';
+    document.getElementById('mode-toggle').textContent='\u21A9 Back to Photo Mode';
+    setStatus('','Live Camera','Tap the camera icon above to start','');
   }
+}
 
-  // 2. Detect iOS in-app browser (Instagram, WhatsApp, etc.) — no Safari token in UA
-  var ua=navigator.userAgent;
-  if(/iPhone|iPad|iPod/.test(ua)&&!/Safari\//.test(ua)){
-    showCamError('Open this page in Safari.\n\nCamera access is not available in this browser.\n\nCopy the URL \u2192 open Safari \u2192 paste and go.', false, false);
-    setStatus('error','WRONG BROWSER','Requires Safari on iOS','');
-    return;
-  }
+function stopLive(){
+  if(liveStream){liveStream.getTracks().forEach(function(t){t.stop();}); liveStream=null;}
+  liveActive=false;
+  document.getElementById('live-wrap').style.display='none';
+  document.getElementById('live-start').style.display='flex';
+  document.getElementById('live-err').style.display='none';
+  document.getElementById('photo-btn').style.display='flex';
+  document.getElementById('mode-toggle').textContent='\u{1F3A5} Try Live Camera';
+  setStatus('','Ready','Tap the camera button to scan a QR','');
+}
 
-  // 3. getUserMedia API missing
+function startLive(){
+  document.getElementById('live-start').style.display='none';
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-    showCamError('Camera API not available.\n\nOpen this page in Safari on iOS 14.3 or later.', false, false);
-    setStatus('error','NOT SUPPORTED','getUserMedia missing','');
+    showLiveErr('Camera API not available.\nUse Photo Mode instead\n(tap the \u21A9 button below).');
     return;
   }
-
-  setStatus('','Requesting camera\u2026','Allow access when prompted','');
   video=document.getElementById('video');
   if(!canvas){canvas=document.createElement('canvas');ctx=canvas.getContext('2d',{willReadFrequently:true});}
-
-  function doGUM(){
-    var gumTimer=setTimeout(function(){
-      showCamError('Camera did not respond.\n\nIf iOS never showed a permission prompt:\nSettings \u2192 Privacy & Security \u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap Retry.', true, true);
-      setStatus('error','TIMED OUT','No camera response','');
-    },8000);
-
-    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
-    .then(function(stream){
-      clearTimeout(gumTimer);
-      tap.style.display='none';
-      document.getElementById('camera-msg').style.display='none';
-      video.srcObject=stream;
-      video.onloadedmetadata=function(){
-        canvas.width=video.videoWidth; canvas.height=video.videoHeight;
-        video.play().catch(function(){});
-        setStatus('','Scan ready','Point camera at student QR','');
-        requestAnimationFrame(scanLoop);
-      };
-      video.oncanplay=function(){
-        if(!canvas.width){
-          canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||480;
-          video.play().catch(function(){});
-          setStatus('','Scan ready','Point camera at student QR','');
-          requestAnimationFrame(scanLoop);
-        }
-      };
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
+  .then(function(stream){
+    liveStream=stream;
+    video.srcObject=stream;
+    video.onloadedmetadata=function(){
+      canvas.width=video.videoWidth; canvas.height=video.videoHeight;
       video.play().catch(function(){});
-    })
-    .catch(function(err){
-      clearTimeout(gumTimer);
-      if(err.name==='NotAllowedError'||err.name==='PermissionDeniedError'){
-        showCamError('Camera access denied.\n\nTo fix on iPhone:\nSettings \u2192 Privacy & Security\n\u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap Retry.', true, true);
-      }else if(err.name==='NotFoundError'){
-        showCamError('No camera found on this device.', true, false);
-      }else{
-        showCamError('Camera error: '+err.name+'\n'+(err.message||''), true, true);
+      liveActive=true;
+      setStatus('','Live: Scan ready','Point camera at student QR','');
+      requestAnimationFrame(scanLoop);
+    };
+    video.oncanplay=function(){
+      if(!canvas.width){
+        canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||480;
+        video.play().catch(function(){});
+        liveActive=true;
+        setStatus('','Live: Scan ready','Point camera at student QR','');
+        requestAnimationFrame(scanLoop);
       }
-      setStatus('error','CAMERA ERROR',err.name,'');
-    });
-  }
+    };
+    video.play().catch(function(){});
+  })
+  .catch(function(err){
+    if(err.name==='NotAllowedError'||err.name==='PermissionDeniedError'){
+      showLiveErr('Camera access denied.\n\nOn iPhone: Settings \u2192 Privacy & Security \u2192 Camera \u2192 Safari \u2192 Allow\n\nOr tap below to use Photo Mode instead.');
+    }else if(err.name==='NotFoundError'){
+      showLiveErr('No camera found on this device.\nUse Photo Mode instead.');
+    }else{
+      showLiveErr('Camera error: '+err.name+'\nUse Photo Mode instead.');
+    }
+  });
+}
 
-  // 4. Permissions API (iOS 16+): detect denied state before calling getUserMedia
-  if(navigator.permissions&&navigator.permissions.query){
-    navigator.permissions.query({name:'camera'}).then(function(ps){
-      if(ps.state==='denied'){
-        showCamError('Camera access is blocked.\n\nTo fix on iPhone:\nSettings \u2192 Privacy & Security\n\u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap Retry.', true, true);
-        setStatus('error','CAMERA BLOCKED','Permission denied in Settings','');
-      }else{ doGUM(); }
-    }).catch(function(){ doGUM(); });
-  }else{ doGUM(); }
+function showLiveErr(text){
+  document.getElementById('live-err-text').textContent=text;
+  document.getElementById('live-err').style.display='flex';
 }
 
 function scanLoop(){
+  if(!liveActive)return;
   if(video&&video.readyState===video.HAVE_ENOUGH_DATA){
-    canvas.width=video.videoWidth;
-    canvas.height=video.videoHeight;
+    canvas.width=video.videoWidth; canvas.height=video.videoHeight;
     ctx.drawImage(video,0,0);
     try{
-      var img=ctx.getImageData(0,0,canvas.width,canvas.height);
-      var r=jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
+      var d=ctx.getImageData(0,0,canvas.width,canvas.height);
+      var r=jsQR(d.data,d.width,d.height,{inversionAttempts:'dontInvert'});
       if(r)processQR(r.data);
     }catch(e){}
   }
@@ -1044,8 +1033,6 @@ function scanLoop(){
 
 loadSession();
 updateUI();
-// Attach via addEventListener — most reliable for iOS PWA gesture detection
-document.getElementById('camera-tap').addEventListener('click',activateCamera);
 </script>
 <script>
 // ── SERVICE WORKER REGISTRATION ──────────────────────────

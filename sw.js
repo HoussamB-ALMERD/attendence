@@ -2,7 +2,7 @@
 //  QR Attendance — Service Worker
 //  Cache-first strategy. Bump CACHE_NAME to force update.
 // ═══════════════════════════════════════════════════════
-const CACHE_NAME = 'qr-attendance-v3';
+const CACHE_NAME = 'qr-attendance-v4';
 
 const FILES_TO_CACHE = [
   './Scanner.html',
