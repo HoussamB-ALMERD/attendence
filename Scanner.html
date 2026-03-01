@@ -94,7 +94,7 @@ button:active{opacity:.75}
     <span id="count-badge">0 / 0</span>
   </div>
   <div id="camera-wrap">
-    <video id="video" autoplay muted playsinline></video>
+    <video id="video" muted playsinline></video>
     <div id="viewfinder">
       <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
         <g fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="0.8" stroke-linecap="round">
@@ -107,7 +107,7 @@ button:active{opacity:.75}
     </div>
     <div id="flash"></div>
     <div id="camera-msg"></div>
-    <button type="button" id="camera-tap" onclick="activateCamera()">
+    <button type="button" id="camera-tap">
       <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
         <circle cx="12" cy="13" r="4"/>
@@ -886,29 +886,44 @@ function processQR(raw){
   flashOverlay('#22c55e');
   flashStatus('ok','SCANNED ✓',student.name,`${student.group}  ·  ${ts.substring(11,16)}`);
 }
-let video=null, canvas=null, ctx=null;
+var video=null, canvas=null, ctx=null;
 
-// activateCamera is called directly from the <button> onclick.
-// Rules for iOS PWA camera:
-//   1. Must be triggered by a real <button> element (not a div)
-//   2. getUserMedia must be called with .then()/.catch(), NOT async/await
-//      (async/await creates a microtask gap that iOS treats as outside the gesture)
-//   3. No awaits or heavy work before getUserMedia in this call stack
 function activateCamera(){
   var tap=document.getElementById('camera-tap');
   var msg=document.getElementById('camera-msg');
-  tap.style.display='none';
 
-  // Initialise canvas/video refs synchronously before the promise
-  video=document.getElementById('video');
-  if(!canvas){
-    canvas=document.createElement('canvas');
-    ctx=canvas.getContext('2d',{willReadFrequently:true});
+  // Give immediate feedback so user knows the tap registered
+  tap.disabled=true;
+  tap.style.opacity='0.4';
+  setStatus('','Requesting camera\u2026','Allow access when iOS prompts','');
+
+  // Guard: camera API missing (should not happen on modern iOS HTTPS)
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    tap.style.display='none';
+    msg.style.display='flex';
+    msg.textContent='Camera not available.\nOpen this page in Safari (not Chrome) on iOS 14.3+.';
+    setStatus('error','NOT SUPPORTED','getUserMedia missing','');
+    return;
   }
 
-  // getUserMedia called immediately — still within the gesture tick
+  // Initialise video/canvas refs before the async call
+  video=document.getElementById('video');
+  if(!canvas){canvas=document.createElement('canvas');ctx=canvas.getContext('2d',{willReadFrequently:true});}
+
+  // Safety timeout — iOS sometimes hangs the promise when permission is in an unknown state
+  var gumTimer=setTimeout(function(){
+    tap.disabled=false; tap.style.opacity='1';
+    msg.style.display='flex';
+    msg.textContent='Camera did not respond.\n\nFix: Settings \u2192 Privacy & Security \u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap the button again.';
+    setStatus('error','TIMED OUT','No camera response','Settings \u2192 Privacy \u2192 Camera \u2192 Allow');
+  },8000);
+
+  // getUserMedia with .then/.catch — no async/await, preserves iOS gesture context
   navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
   .then(function(stream){
+    clearTimeout(gumTimer);
+    tap.style.display='none';
+    msg.style.display='none';
     video.srcObject=stream;
     video.onloadedmetadata=function(){
       canvas.width=video.videoWidth;
@@ -917,32 +932,51 @@ function activateCamera(){
       setStatus('','Scan ready','Point camera at student QR','');
       requestAnimationFrame(scanLoop);
     };
+    // Some iOS versions fire canplay instead of loadedmetadata
+    video.oncanplay=function(){
+      if(!canvas.width){
+        canvas.width=video.videoWidth||640;
+        canvas.height=video.videoHeight||480;
+        video.play().catch(function(){});
+        setStatus('','Scan ready','Point camera at student QR','');
+        requestAnimationFrame(scanLoop);
+      }
+    };
     video.play().catch(function(){});
   })
   .catch(function(err){
-    tap.style.display='flex';
+    clearTimeout(gumTimer);
+    tap.disabled=false; tap.style.opacity='1';
     msg.style.display='flex';
-    msg.textContent=err.name==='NotAllowedError'
-      ?'Camera access denied.\nSettings \u2192 Safari \u2192 Camera \u2192 Allow, then tap again.'
-      :'Camera error: '+err.name+'\n'+err.message;
+    if(err.name==='NotAllowedError'){
+      msg.textContent='Camera access denied.\n\nFix: Settings \u2192 Privacy & Security \u2192 Camera \u2192 Safari \u2192 Allow\n\nThen tap again.';
+    }else if(err.name==='NotFoundError'){
+      msg.textContent='No camera found on this device.';
+    }else{
+      msg.textContent='Camera error: '+err.name+'\n'+(err.message||'');
+    }
     setStatus('error','CAMERA ERROR',err.name,'Tap button to retry');
   });
 }
 
 function scanLoop(){
   if(video&&video.readyState===video.HAVE_ENOUGH_DATA){
-    canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+    canvas.width=video.videoWidth;
+    canvas.height=video.videoHeight;
     ctx.drawImage(video,0,0);
     try{
-      const img=ctx.getImageData(0,0,canvas.width,canvas.height);
-      const r=jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
-      if(r) processQR(r.data);
+      var img=ctx.getImageData(0,0,canvas.width,canvas.height);
+      var r=jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
+      if(r)processQR(r.data);
     }catch(e){}
   }
   requestAnimationFrame(scanLoop);
 }
-loadSession(); updateUI();
-// Do NOT auto-start camera — wait for user tap (required by iOS Safari)
+
+loadSession();
+updateUI();
+// Attach via addEventListener — most reliable for iOS PWA gesture detection
+document.getElementById('camera-tap').addEventListener('click',activateCamera);
 </script>
 <script>
 // ── SERVICE WORKER REGISTRATION ──────────────────────────
